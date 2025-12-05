@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Karbo Wallet</title>
+
+<style>
+:root {
+  --bg: #0f1720;
+  --panel: #1a2330;
+  --panel2: #202b3b;
+  --accent: #4fa3c7;
+  --text: #e6edf3;
+  --muted: #8a9bb2;
+  --danger: #ff6b6b;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+}
+
+header {
+  padding: 12px 20px;
+  background: linear-gradient(90deg, #1b2636, #0f1720);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #2b3648;
+}
+
+main {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  height: calc(100vh - 54px);
+}
+
+aside {
+  background: var(--panel);
+  padding: 12px;
+  border-right: 1px solid #2b3648;
+  overflow-y: auto;
+}
+
+section {
+  padding: 14px;
+  overflow-y: auto;
+}
+
+h3 { margin-top: 0; }
+
+.address {
+  padding: 8px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  background: var(--panel2);
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.address.selected {
+  border-color: var(--accent);
+}
+
+.small { font-size: 12px; color: var(--muted); word-break: break-all; }
+
+button {
+  background: #2a3b52;
+  color: var(--text);
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #33465f;
+  cursor: pointer;
+  margin: 4px 0;
+}
+button:hover { background: #324a67; }
+
+input, select {
+  width: 100%;
+  padding: 8px;
+  margin: 6px 0;
+  background: #0f1720;
+  color: var(--text);
+  border: 1px solid #324a67;
+  border-radius: 6px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  border-bottom: 1px solid #2b3648;
+  padding: 6px;
+}
+
+.amount.neg { color: var(--danger); }
+.amount.pos { color: #8dffa1; }
+</style>
+</head>
+
+<body>
+
+<header>
+  <b>Karbo Wallet</b>
+  <span id="totalBalance"></span>
+</header>
+
+<main>
+<aside>
+  <h3>Addresses</h3>
+  <div id="addresses"></div>
+
+  <button onclick="createAddress()">? Create address</button>
+  <button onclick="saveWallet()">?? Save wallet</button>
+  <button onclick="showKeys()">?? Show keys</button>
+</aside>
+
+<section>
+  <h3>Transactions</h3>
+  <table>
+    <thead>
+      <tr><th>Time</th><th>Amount</th><th>Txid</th></tr>
+    </thead>
+    <tbody id="txs"></tbody>
+  </table>
+
+  <hr>
+
+  <h3>Send</h3>
+  <label>From address (optional)</label>
+  <select id="sendFrom"></select>
+
+  <label>Destination</label>
+  <input id="to">
+
+  <label>Amount (KARBO)</label>
+  <input id="amount">
+
+  <label>Fee (atomic)</label>
+  <input id="fee" value="100000">
+
+  <button onclick="send()">Send</button>
+  <div class="small" id="sendStatus"></div>
+</section>
+</main>
+
+<script>
+const RPC = "http://127.0.0.1:16001/json_rpc";
+const ATOMIC = 1e12;
+
+let addresses = [];
+let selected = null;
+
+const rpc = async (method, params={}) => {
+  const r = await fetch(RPC, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({jsonrpc:"2.0", id:1, method, params})
+  });
+  const j = await r.json();
+  if (j.error) throw j.error;
+  return j.result;
+};
+
+const fmt = x => (x/ATOMIC).toFixed(8);
+
+async function load() {
+  const a = await rpc("getAddresses");
+  addresses = [];
+
+  let total = 0;
+  for (const addr of a.addresses) {
+    const b = await rpc("getBalance", { address: addr });
+    addresses.push({ addr, bal: b.availableBalance });
+    total += b.availableBalance;
+  }
+
+  document.getElementById("totalBalance").innerText =
+    `Total: ${fmt(total)} KARBO`;
+
+  selected ??= addresses[0]?.addr;
+  renderAddresses();
+  loadTxs();
+}
+
+function renderAddresses() {
+  const box = document.getElementById("addresses");
+  const sel = document.getElementById("sendFrom");
+  box.innerHTML = "";
+  sel.innerHTML = `<option value="">(auto)</option>`;
+
+  addresses.forEach(a => {
+    const d = document.createElement("div");
+    d.className = "address" + (a.addr===selected?" selected":"");
+    d.onclick = () => { selected = a.addr; loadTxs(); renderAddresses(); };
+    d.innerHTML = `
+      <div>${fmt(a.bal)} KARBO</div>
+      <div class="small">${a.addr}</div>`;
+    box.appendChild(d);
+
+    const o = document.createElement("option");
+    o.value = a.addr;
+    o.textContent = a.addr;
+    sel.appendChild(o);
+  });
+}
+
+async function loadTxs() {
+  const r = await rpc("getTransactions", {
+    addresses: [selected],
+    firstBlockIndex: 0,
+    blockCount: 1000000
+  });
+
+  const box = document.getElementById("txs");
+  box.innerHTML = "";
+
+  r.items.forEach(b =>
+    b.transactions.forEach(t =>
+      t.transfers.forEach(tr => {
+        if (tr.address !== selected) return;
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${new Date(t.timestamp*1000).toLocaleString()}</td>
+          <td class="amount ${tr.amount<0?'neg':'pos'}">${fmt(tr.amount)}</td>
+          <td class="small">${t.transactionHash.slice(0,20)}…</td>`;
+        box.appendChild(row);
+      })
+    )
+  );
+}
+
+async function createAddress(){ await rpc("createAddress"); load(); }
+async function saveWallet(){ await rpc("save"); alert("Saved"); }
+
+async function showKeys() {
+  try {
+    const view = await rpc("getViewKey");
+    const seed = await rpc("getMnemonicSeed");
+    alert(`View key:\n${view.viewSecretKey}\n\nMnemonic:\n${seed.mnemonicSeed}`);
+  } catch(e) {
+    alert("Cannot read keys:\n"+JSON.stringify(e,null,2));
+  }
+}
+
+async function send() {
+  try {
+    const p = {
+      transfers:[{ address:to.value, amount:Math.floor(amount.value*ATOMIC)}],
+      fee:parseInt(fee.value)
+    };
+    if (sendFrom.value) p.addresses=[sendFrom.value];
+    const r = await rpc("sendTransaction", p);
+    sendStatus.innerText = "TX sent: "+r.transactionHash;
+    load();
+  } catch(e) {
+    sendStatus.innerText = "Error: "+e.message;
+  }
+}
+
+load();
+</script>
+</body>
+</html>
