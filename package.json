@@ -2,10 +2,16 @@
   "name": "karbo-walletd-ui",
   "version": "1.0.0",
   "description": "Karbo walletd (Payment Gate) UI",
+  "author": "Karbo",
+  "license": "MIT",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder"
+    "pack": "electron-builder --dir",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
+    "build:mac": "electron-builder --mac"
   },
   "build": {
     "appId": "org.karbo.walletd-ui",
@@ -13,12 +19,46 @@
     "files": [
       "main.js",
       "preload.js",
-      "index.html",
-      "icon.png"
+      "index.html"
     ],
     "win": {
-      "target": "nsis"
-    }
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Finance",
+      "icon": "build/icons"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "category": "public.app-category.finance",
+      "icon": "build/icon.icns"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "YOUR_GITHUB_USERNAME",
+        "repo": "karbo-walletd-ui"
+      }
+    ]
   },
   "devDependencies": {
     "electron": "^33.0.0",
