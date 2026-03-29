@@ -1,4 +1,4 @@
-# Karbo Wallet UI
+# Karbo Payment Gate Wallet UI
 
 Desktop GUI for **walletd** (Payment Gate) — the Karbo RPC wallet service.
 
