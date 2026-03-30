@@ -109,6 +109,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'Karbo Wallet',
+    icon: path.join(__dirname, 'build', 'icon.ico'),
     backgroundColor: '#0f1720',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
