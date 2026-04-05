@@ -182,6 +182,7 @@ tr.clickable { cursor: pointer; }
       </thead>
       <tbody id="txBody"></tbody>
     </table>
+    <div id="txLoading" class="empty-state hidden">Loading transactions...</div>
     <div id="txEmpty" class="empty-state hidden">No transactions found for this address.</div>
     <div class="pagination">
       <button onclick="prevPage()">Prev</button>
@@ -579,7 +580,7 @@ tr.clickable { cursor: pointer; }
 const ATOMIC = 1e12;
 const PAGE_SIZE = 25;
 const POLL_MS = 30000;
-const BATCH_BLOCKS = 1000;
+const BATCH_BLOCKS = 10000;
 
 let addressList = [];       // [{addr, available, locked}]
 let filteredAddrs = [];
@@ -896,14 +897,22 @@ el('addrSearch').addEventListener('input', e => {
    TRANSACTIONS
    ============================================================ */
 async function initAndLoadTxs() {
+  if (!selectedAddr) return;
+  el('txLoading').classList.remove('hidden');
+  el('txEmpty').classList.add('hidden');
+  el('txBody').innerHTML = '';
   await updateStatus();
   blockCursor = tipHeight;
   allTxs = [];
   currentPage = 0;
+  txLoadAddr = selectedAddr;
   await loadTxBatch();
   await ensurePageFilled();
+  el('txLoading').classList.add('hidden');
   renderTxPage();
 }
+
+let txLoadAddr = null;  // prevent stale loads from overwriting
 
 async function loadTxBatch() {
   if (loadingBatch || blockCursor <= 0 || !selectedAddr) return;
@@ -912,20 +921,21 @@ async function loadTxBatch() {
     const start = Math.max(blockCursor - BATCH_BLOCKS, 0);
     const count = blockCursor - start;
     if (count <= 0) return;
-    const res = await rpc('getTransactions', { addresses: [selectedAddr], firstBlockIndex: start, blockCount: count });
+    const addr = selectedAddr;
+    const res = await rpc('getTransactions', { addresses: [addr], firstBlockIndex: start, blockCount: count });
+    // Discard result if user switched to a different address while loading
+    if (addr !== txLoadAddr) return;
     blockCursor = start;
 
     const existing = new Set(allTxs.map(x => x.transactionHash));
     (res.items || []).forEach(block => {
       (block.transactions || []).forEach(tx => {
         if (!existing.has(tx.transactionHash)) {
-          // Check if any transfer involves our selected address
-          const relevant = (tx.transfers || []).some(tr => tr.address === selectedAddr);
+          const relevant = (tx.transfers || []).some(tr => tr.address === addr);
           if (relevant) {
-            // Sum all transfers for this address
             let netAmount = 0;
             (tx.transfers || []).forEach(tr => {
-              if (tr.address === selectedAddr) netAmount += tr.amount;
+              if (tr.address === addr) netAmount += tr.amount;
             });
             allTxs.push({ ...tx, netAmount });
             existing.add(tx.transactionHash);
@@ -937,16 +947,19 @@ async function loadTxBatch() {
     allTxs.sort((a, b) => b.timestamp - a.timestamp || b.blockIndex - a.blockIndex);
   } catch (e) {
     console.error('loadTxBatch:', e);
+    toast(`TX load error: ${e.message || 'unknown'}`, 'error');
   } finally {
     loadingBatch = false;
   }
 }
 
 async function ensurePageFilled() {
-  let attempts = 0;
-  while (allTxs.length < (currentPage + 1) * PAGE_SIZE && blockCursor > 0 && attempts < 50) {
+  while (allTxs.length < (currentPage + 1) * PAGE_SIZE && blockCursor > 0) {
     await loadTxBatch();
-    attempts++;
+    // If user changed address, stop
+    if (selectedAddr !== txLoadAddr) return;
+    // Show partial results as they come in
+    if (allTxs.length > 0) renderTxPage();
   }
 }
 
