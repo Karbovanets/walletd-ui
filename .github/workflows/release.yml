@@ -23,7 +23,7 @@ jobs:
           - name: Windows portable
             os: windows-latest
             artifact_name: windows-portable
-            artifact_path: dist/*portable*.exe
+            artifact_path: dist/*.exe
             build_command: npx electron-builder --win portable --x64 --publish never
           - name: Linux AppImage
             os: ubuntu-latest
