@@ -3,16 +3,13 @@ name: Build And Release
 on:
   push:
     tags:
-      - 'v*'  # triggers on v1.0.0, v1.2.3, etc.
-  release:
-    types:
-      - published
+      - 'v*'
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
